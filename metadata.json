@@ -1,0 +1,6 @@
+{
+  "name": "Find My Friend",
+  "description": "An Android application designed for field employees to share their live location with managers/clients via a secure, time-bound web link.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

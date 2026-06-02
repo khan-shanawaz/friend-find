@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Find My Friend - Live Tracking Viewer</title>
+    <!-- Leaflet.js CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for beautiful icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        #map {
+            height: calc(100vh - 80px);
+            z-index: 1;
+        }
+        .leaflet-bar {
+            border: none !important;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1) !important;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen flex flex-col overflow-hidden">
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-slate-800 border-b border-slate-700 h-20 px-6 flex items-center justify-between shadow-md relative z-10">
+        <div class="flex items-center space-x-3">
+            <div class="bg-teal-500 text-slate-950 p-2.5 rounded-xl shadow-lg shadow-teal-500/20">
+                <i class="fa-solid fa-map-location-dot text-lg"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight text-white">Find My Friend</h1>
+                <p class="text-xs text-slate-400">Live Field Employee Tracking System</p>
+            </div>
+        </div>
+        
+        <!-- Status Indicator -->
+        <div class="flex items-center space-x-4">
+            <div id="status-badge" class="flex items-center space-x-2 bg-slate-900/60 border border-slate-700 px-3 py-1.5 rounded-full text-xs font-semibold">
+                <span id="status-dot" class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                <span id="status-text" class="text-slate-350">Connecting...</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Grid -->
+    <main class="flex-1 relative flex flex-col md:flex-row min-h-0">
+        
+        <!-- Sidebar: Session Details & Cached Paths -->
+        <div id="sidebar" class="w-full md:w-96 bg-slate-800/95 border-b md:border-b-0 md:border-r border-slate-700 flex flex-col overflow-y-auto p-5 space-y-5 transition-all duration-300 relative z-10 shadow-xl">
+            <!-- No Active Session Alert -->
+            <div id="no-session-card" class="bg-slate-900/80 border border-slate-700/80 rounded-2xl p-6 text-center space-y-4">
+                <i class="fa-solid fa-link-slash text-4xl text-slate-500"></i>
+                <h2 class="text-lg font-bold text-white">No Tracking Session</h2>
+                <p class="text-sm text-slate-400">Provide a valid share link, or input your database details below to locate an employee.</p>
+                <div class="space-y-3 pt-2">
+                    <input id="input-db" type="text" placeholder="Firebase Database URL" class="w-full bg-slate-800 border border-slate-600 rounded-xl px-3.5 py-2.5 text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none">
+                    <input id="input-session" type="text" placeholder="Session ID" class="w-full bg-slate-800 border border-slate-600 rounded-xl px-3.5 py-2.5 text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none">
+                    <button id="btn-load" class="w-full bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold py-2.5 px-4 rounded-xl text-xs transition duration-200">
+                        View Live Track
+                    </button>
+                </div>
+            </div>
+
+            <!-- Active Session Details -->
+            <div id="active-session-card" class="space-y-5 hidden">
+                <!-- Metadata Card -->
+                <div class="bg-slate-900/60 border border-slate-700/60 rounded-2xl p-5 space-y-4">
+                    <div class="flex justify-between items-start border-b border-slate-800 pb-3">
+                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Field Employee</span>
+                        <span class="bg-teal-500/10 text-teal-400 border border-teal-500/20 text-[10px] uppercase font-bold px-2 py-0.5 rounded-md">Live</span>
+                    </div>
+                    <div>
+                        <h2 id="employee-name" class="text-lg font-bold text-white">Loading Name...</h2>
+                        <p id="job-details" class="text-sm text-slate-350 mt-1">Fetching order details...</p>
+                    </div>
+                </div>
+
+                <!-- Live Location Card -->
+                <div class="bg-slate-900/40 border border-slate-700/40 rounded-2xl p-5 space-y-3.5">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Live Coordinates</h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-slate-800/80 border border-slate-700 p-3 rounded-xl">
+                            <span class="text-[10px] text-slate-400 uppercase font-medium block">Latitude</span>
+                            <span id="coord-lat" class="text-sm font-semibold font-mono text-white">--</span>
+                        </div>
+                        <div class="bg-slate-800/80 border border-slate-700 p-3 rounded-xl">
+                            <span class="text-[10px] text-slate-400 uppercase font-medium block">Longitude</span>
+                            <span id="coord-lng" class="text-sm font-semibold font-mono text-white">--</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between text-xs text-slate-400 pt-1.5 border-t border-slate-800">
+                        <span>Last Update</span>
+                        <span id="coord-time" class="font-mono bg-slate-800 px-2 py-0.5 rounded-md text-[11px]">Never</span>
+                    </div>
+                </div>
+
+                <!-- Expiration Warning Alert -->
+                <div id="expiry-warning-box" class="bg-amber-500/10 border border-amber-500/25 p-4 rounded-xl flex items-start space-x-3">
+                    <i class="fa-solid fa-clock-rotate-left text-amber-500 mt-0.5"></i>
+                    <div>
+                        <span class="text-xs font-bold text-amber-400 block">Link Expiration time</span>
+                        <span id="expiration-text" class="text-[11px] text-slate-300">Calculating...</span>
+                    </div>
+                </div>
+
+                <!-- Offline Cache Monitor (IndexedDB details) -->
+                <div class="bg-slate-900/30 border border-slate-800 rounded-2xl p-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Offline Map Cache</span>
+                        <span id="cache-count-badge" class="bg-slate-800 border border-slate-700 text-xs font-mono text-slate-300 px-2.5 py-0.5 rounded-full">0 points</span>
+                    </div>
+                    <p class="text-[11px] text-slate-400 leading-relaxed">
+                        Each location recorded is saved directly in your browser's local <strong>IndexedDB</strong> storage. Safe path details are preserved during connectivity downtime.
+                    </p>
+                    <button id="btn-clear-db" class="w-full bg-slate-800 hover:bg-red-500/10 border border-slate-700 hover:border-red-500/20 text-slate-400 hover:text-red-400 font-medium py-1.5 rounded-xl text-xs transition duration-200 flex items-center justify-center space-x-1.5">
+                        <i class="fa-solid fa-trash-can text-[10px]"></i>
+                        <span>Clear Offline History</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Pane: Leaflet Map Container -->
+        <div id="map-container" class="flex-1 relative min-h-[400px]">
+            <!-- Tracking Expired Overlays Overlay -->
+            <div id="expired-overlay" class="absolute inset-0 bg-slate-950/90 z-[1000] flex flex-col items-center justify-center p-8 text-center hidden">
+                <div class="bg-red-500/10 border border-red-500/20 p-5 rounded-3xl mb-4 text-red-500">
+                    <i class="fa-solid fa-circle-exclamation text-6xl"></i>
+                </div>
+                <h2 class="text-2xl font-black text-white tracking-tight">Tracking Link Expired</h2>
+                <p id="expired-why" class="text-slate-400 max-w-md text-sm mt-2 leading-relaxed">
+                    This location sharing session has reached its user-allotted lifespan. The live GPS feed has stopped and coordinates have cleared for employee privacy.
+                </p>
+            </div>
+            <div id="map"></div>
+        </div>
+    </main>
+
+    <!-- Leaflet.js JavaScript -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script>
+        // Set parameters from Query string strings
+        const urlParams = new URLSearchParams(window.location.search);
+        let session = urlParams.get('session') || '';
+        let dbUrl = urlParams.get('db') || 'https://find-my-friend-default-rtdb.firebaseio.com';
+
+        let map, marker, polyline;
+        let routeCoordinates = [];
+        let rtdbPollInterval = null;
+        let dbInstance = null;
+
+        // Init IndexedDB
+        function initIndexedDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open("TrackingHistoryDB", 1);
+                
+                request.onupgradeneeded = function(event) {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains("coordinates")) {
+                        db.createObjectStore("coordinates", { keyPath: "id" });
+                    }
+                };
+
+                request.onsuccess = function(event) {
+                    dbInstance = event.target.result;
+                    resolve(dbInstance);
+                };
+
+                request.onerror = function(event) {
+                    console.error("IndexedDB error:", event.target.error);
+                    reject(event.target.error);
+                };
+            });
+        }
+
+        // Cache coordinate point
+        async function cacheCoordinate(point) {
+            if (!dbInstance) return;
+            const transaction = dbInstance.transaction(["coordinates"], "readwrite");
+            const store = transaction.objectStore("coordinates");
+            store.put(point);
+            await updateCacheBadge();
+        }
+
+        // Fetch all points for current Session
+        function getSessionCachedPoints(sessionId) {
+            return new Promise((resolve) => {
+                if (!dbInstance) return resolve([]);
+                const transaction = dbInstance.transaction(["coordinates"], "readonly");
+                const store = transaction.objectStore("coordinates");
+                const request = store.getAll();
+
+                request.onsuccess = function() {
+                    const allPoints = request.result;
+                    const filtered = allPoints
+                        .filter(p => p.sessionId === sessionId)
+                        .sort((a, b) => a.timestamp - b.timestamp);
+                    resolve(filtered);
+                };
+
+                request.onerror = function() {
+                    resolve([]);
+                };
+            });
+        }
+
+        // Clear all caches in DB
+        async function clearAllLocalCaches() {
+            if (!dbInstance) return;
+            const transaction = dbInstance.transaction(["coordinates"], "readwrite");
+            const store = transaction.objectStore("coordinates");
+            
+            // Clear all
+            const request = store.clear();
+            request.onsuccess = function() {
+                console.log("Local IndexedDB cleared.");
+                routeCoordinates = [];
+                if (polyline) {
+                    polyline.setLatLngs([]);
+                }
+                updateCacheBadge();
+            };
+        }
+
+        async function updateCacheBadge() {
+            if (!session) return;
+            const points = await getSessionCachedPoints(session);
+            document.getElementById('cache-count-badge').innerText = `${points.length} points`;
+        }
+
+        // Init Map
+        function initMap() {
+            // Default center as starting placeholder
+            map = L.map('map', {
+                zoomControl: false
+            }).setView([37.7749, -122.4194], 14);
+
+            // Add clean dark tiles from OpenStreetMap or CartoDB
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 20
+            }).addTo(map);
+
+            // Re-apply zoom controls nicely at top-right
+            L.control.zoom({ position: 'topright' }).addTo(map);
+
+            // Create a custom modern glowing icon
+            const trackingIcon = L.divIcon({
+                className: 'custom-div-icon',
+                html: `
+                    <div class="relative flex items-center justify-center">
+                        <span class="absolute inline-flex h-11 w-11 rounded-full bg-teal-400 opacity-30 animate-ping"></span>
+                        <span class="absolute inline-flex h-7 w-7 rounded-full bg-teal-550 opacity-50 animate-pulse"></span>
+                        <div class="relative bg-teal-400 text-slate-950 border-2 border-white rounded-full items-center justify-center w-5 h-5 flex shadow-lg">
+                            <i class="fa-solid fa-person-walking text-[10px]"></i>
+                        </div>
+                    </div>
+                `,
+                iconSize: [44, 44],
+                iconAnchor: [22, 22]
+            });
+
+            marker = L.marker([37.7749, -122.4194], { icon: trackingIcon }).addTo(map);
+
+            polyline = L.polyline([], {
+                color: '#2dd4bf', // teal-400
+                weight: 5,
+                opacity: 0.8,
+                lineJoin: 'round',
+                dashArray: '5, 8'
+            }).addTo(map);
+        }
+
+        // Show/Hide Session Detail Pane
+        function setupUIState() {
+            if (session) {
+                document.getElementById('no-session-card').classList.add('hidden');
+                document.getElementById('active-session-card').classList.remove('hidden');
+                updateStatusBadge('connecting');
+            } else {
+                document.getElementById('no-session-card').classList.remove('hidden');
+                document.getElementById('active-session-card').classList.add('hidden');
+                updateStatusBadge('idle');
+            }
+        }
+
+        // Change Status bar display states
+        function updateStatusBadge(status) {
+            const badge = document.getElementById('status-badge');
+            const dot = document.getElementById('status-dot');
+            const text = document.getElementById('status-text');
+
+            if (status === 'live') {
+                badge.className = "flex items-center space-x-2 bg-emerald-500/10 border border-emerald-500/25 px-3 py-1.5 rounded-full text-xs font-semibold text-emerald-450";
+                dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-550 animate-pulse";
+                text.innerText = "Live tracking Active";
+                text.className = "text-emerald-400";
+            } else if (status === 'connecting') {
+                badge.className = "flex items-center space-x-2 bg-amber-500/10 border border-amber-500/25 px-3 py-1.5 rounded-full text-xs font-semibold text-amber-450";
+                dot.className = "w-2.5 h-2.5 rounded-full bg-amber-550 animate-pulse";
+                text.innerText = "Connecting to GPS Feed...";
+                text.className = "text-amber-400";
+            } else if (status === 'offline') {
+                badge.className = "flex items-center space-x-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-full text-xs font-semibold text-slate-400";
+                dot.className = "w-2.5 h-2.5 rounded-full bg-slate-500";
+                text.innerText = "Offline (Downtime Mode)";
+                text.className = "text-slate-400";
+            } else {
+                badge.className = "flex items-center space-x-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full text-xs font-light text-slate-500";
+                dot.className = "w-2.5 h-2.5 rounded-full bg-slate-700";
+                text.innerText = "No Tracking Feed";
+                text.className = "text-slate-500";
+            }
+        }
+
+        function cleanBaseUrl(url) {
+            let clean = url.trim();
+            if (!clean.startsWith("http://") && !clean.startsWith("https://")) {
+                clean = "https://" + clean;
+            }
+            if (clean.endsWith("/")) {
+                clean = clean.substring(0, clean.length - 1);
+            }
+            return clean;
+        }
+
+        // Start Firebase Tracking Polling
+        async function startTrackingSession() {
+            if (rtdbPollInterval) clearInterval(rtdbPollInterval);
+            if (!session) return;
+
+            const base = cleanBaseUrl(dbUrl);
+            const queryUrl = `${base}/tracking_sessions/${session}.json`;
+
+            const cachedPts = await getSessionCachedPoints(session);
+            if (cachedPts.length > 0) {
+                routeCoordinates = cachedPts.map(p => [p.latitude, p.longitude]);
+                polyline.setLatLngs(routeCoordinates);
+                
+                const lastCache = cachedPts[cachedPts.length - 1];
+                marker.setLatLng([lastCache.latitude, lastCache.longitude]);
+                map.setView([lastCache.latitude, lastCache.longitude], 16);
+
+                document.getElementById('employee-name').innerText = lastCache.employeeName || 'Cached Track';
+                document.getElementById('job-details').innerText = lastCache.jobDetails || '';
+                document.getElementById('coord-lat').innerText = lastCache.latitude.toFixed(6);
+                document.getElementById('coord-lng').innerText = lastCache.longitude.toFixed(6);
+                document.getElementById('coord-time').innerText = new Date(lastCache.timestamp).toLocaleTimeString();
+                document.getElementById('cache-count-badge').innerText = `${cachedPts.length} points`;
+            }
+
+            async function pollFeed() {
+                try {
+                    const response = await fetch(queryUrl);
+                    if (!response.ok) {
+                        updateStatusBadge('offline');
+                        return;
+                    }
+                    const data = await response.json();
+                    
+                    if (!data) {
+                        updateStatusBadge('offline');
+                        return;
+                    }
+
+                    const metadata = data.metadata || {};
+                    const curTimeSec = Math.floor(Date.now() / 1000);
+                    
+                    if (metadata.expires_at && curTimeSec > metadata.expires_at) {
+                        expirationTriggered();
+                        return;
+                    }
+
+                    updateStatusBadge('live');
+
+                    const name = metadata.employee_name || 'Anonymous Employee';
+                    const job = metadata.job_details || 'Field Task Sharing';
+                    
+                    document.getElementById('employee-name').innerText = name;
+                    document.getElementById('job-details').innerText = job;
+
+                    const expiresTime = new Date(metadata.expires_at * 1000);
+                    document.getElementById('expiration-text').innerText = `Valid until ${expiresTime.toLocaleTimeString()} (${expiresTime.toLocaleDateString()})`;
+
+                    const liveLoc = data.live_location;
+                    if (liveLoc && liveLoc.latitude && liveLoc.longitude) {
+                        const lat = parseFloat(liveLoc.latitude);
+                        const lng = parseFloat(liveLoc.longitude);
+                        const timeMs = parseInt(liveLoc.last_updated) * 1000;
+
+                        document.getElementById('coord-lat').innerText = lat.toFixed(6);
+                        document.getElementById('coord-lng').innerText = lng.toFixed(6);
+                        document.getElementById('coord-time').innerText = new Date(timeMs).toLocaleTimeString();
+
+                        marker.setLatLng([lat, lng]);
+
+                        const lastPt = routeCoordinates[routeCoordinates.length - 1];
+                        if (!lastPt || lastPt[0] !== lat || lastPt[1] !== lng) {
+                            routeCoordinates.push([lat, lng]);
+                            polyline.setLatLngs(routeCoordinates);
+
+                            map.panTo([lat, lng]);
+
+                            await cacheCoordinate({
+                                id: `${session}_${timeMs}`,
+                                sessionId: session,
+                                employeeName: name,
+                                jobDetails: job,
+                                latitude: lat,
+                                longitude: lng,
+                                timestamp: timeMs
+                            });
+                        }
+                    }
+                } catch(err) {
+                    console.error("Failed to connect live status feed", err);
+                    updateStatusBadge('offline');
+                }
+            }
+
+            await pollFeed();
+            rtdbPollInterval = setInterval(pollFeed, 10000); // 10s intervals
+        }
+
+        function expirationTriggered() {
+            clearInterval(rtdbPollInterval);
+            rtdbPollInterval = null;
+            
+            if (marker) map.removeLayer(marker);
+            if (polyline) map.removeLayer(polyline);
+
+            updateStatusBadge('idle');
+            document.getElementById('expired-overlay').classList.remove('hidden');
+        }
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            initMap();
+            setupUIState();
+            await initIndexedDB();
+
+            if (session) {
+                startTrackingSession();
+            }
+
+            document.getElementById('btn-load').addEventListener('click', () => {
+                const dbVal = document.getElementById('input-db').value;
+                const pathVal = document.getElementById('input-session').value;
+                
+                if (pathVal) {
+                    let newUrl = `?session=${encodeURIComponent(pathVal)}`;
+                    if (dbVal) {
+                        newUrl += `&db=${encodeURIComponent(dbVal)}`;
+                    }
+                    window.location.href = newUrl;
+                }
+            });
+
+            document.getElementById('btn-clear-db').addEventListener('click', async () => {
+                if (confirm("Are you sure you want to permanently delete all localized tracks?")) {
+                    await clearAllLocalCaches();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
